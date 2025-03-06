@@ -1,0 +1,1 @@
+pi@raspberrypi006:~ $ ngrok http http://localhost:5000
