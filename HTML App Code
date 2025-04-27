@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Save Button</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+        .button {
+            font-size: 24px;
+            padding: 20px 40px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <button class="button" onclick="saveFunction()">Save</button>
+    
+    <script>
+        function saveFunction() {
+            fetch('/save')  // Calls the Flask route
+            .then(response => response.text())
+            .then(data => alert(data))  // Displays the response in an alert box
+            .catch(error => alert("Error: " + error));
+        }
+    </script>
+</body>
+</html>
