@@ -1,0 +1,149 @@
+from flask import Flask, render_template, request, jsonify
+import RPi.GPIO as GPIO
+import threading
+import time
+import smbus
+import atexit
+
+app = Flask(__name__, template_folder='templates_2', static_folder='static_2')
+
+GPIO.setmode(GPIO.BCM)
+
+servo_pins = [17, 18, 27]
+servos = {}
+
+for pin in servo_pins:
+    GPIO.setup(pin, GPIO.OUT)
+    pwm = GPIO.PWM(pin, 50)
+    pwm.start(0)
+    servos[pin] = pwm
+
+def angle_to_duty_cycle(angle):
+    return 2.5 + (angle / 180.0) * 10
+
+def set_servo(pin, angle):
+    angle = max(0, min(135, angle))
+    servos[pin].ChangeDutyCycle(angle_to_duty_cycle(angle))
+
+def reset_servos():
+    for pin in [17, 18, 27]:
+        set_servo(pin, 67)
+
+bus = smbus.SMBus(1)
+BH1750_ADDRESS = 0x23
+
+def read_light():
+    try:
+        data = bus.read_i2c_block_data(BH1750_ADDRESS, 0x11)
+        return ((data[0] << 8) + data[1]) / 1.2
+    except:
+        return -1
+
+pir_pin = 22
+GPIO.setup(pir_pin, GPIO.IN)
+
+motion_detected = False
+last_motion_time = 0
+motion_reset_time = 2
+
+autonomous_enabled = False
+dance_enabled = False
+
+def dance_loop():
+    while True:
+        if dance_enabled:
+            for _ in range(2):
+                set_servo(17, 30)
+                set_servo(18, 30)
+                time.sleep(0.4)
+                set_servo(17, 100)
+                set_servo(18, 100)
+                time.sleep(0.4)
+            for _ in range(2):
+                set_servo(17, 30)
+                set_servo(18, 100)
+                time.sleep(0.4)
+                set_servo(17, 100)
+                set_servo(18, 30)
+                time.sleep(0.4)
+            set_servo(17, 67)
+            set_servo(18, 67)
+        time.sleep(6)
+
+def autonomous_loop():
+    global motion_detected, last_motion_time
+    while True:
+        if autonomous_enabled:
+            brightness = read_light()
+            if brightness > 50:
+                set_servo(27, 30)
+            else:
+                set_servo(27, 100)
+            if GPIO.input(pir_pin):
+                set_servo(17, 100)
+                set_servo(18, 30)
+                last_motion_time = time.time()
+                motion_detected = True
+            elif time.time() - last_motion_time > motion_reset_time:
+                set_servo(17, 67)
+                set_servo(18, 67)
+                motion_detected = False
+        time.sleep(0.2)
+
+@app.route('/')
+def index():
+    return render_template('index_3.html')
+
+@app.route('/control', methods=['POST'])
+def control():
+    if not (autonomous_enabled or dance_enabled):
+        data = request.json
+        set_servo(17, data['x'])
+        set_servo(18, data['x'])
+        set_servo(27, data['y'])
+    return '', 204
+
+@app.route('/reset', methods=['POST'])
+def reset():
+    reset_servos()
+    return '', 204
+
+@app.route('/autonomous', methods=['POST'])
+def toggle_autonomous():
+    global autonomous_enabled, dance_enabled
+    data = request.json
+    autonomous_enabled = data['enabled']
+    if autonomous_enabled:
+        dance_enabled = False
+    return '', 204
+
+@app.route('/dance', methods=['POST'])
+def toggle_dance():
+    global dance_enabled, autonomous_enabled
+    data = request.json
+    dance_enabled = data['enabled']
+    if dance_enabled:
+        autonomous_enabled = False
+    return '', 204
+
+@app.route('/status')
+def status():
+    return jsonify({
+        'light_level': round(read_light(), 2),
+        'motion_detected': motion_detected
+    })
+
+def cleanup():
+    for pwm in servos.values():
+        pwm.stop()
+    GPIO.cleanup()
+
+atexit.register(cleanup)
+
+reset_servos()
+
+threading.Thread(target=dance_loop, daemon=True).start()
+threading.Thread(target=autonomous_loop, daemon=True).start()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
