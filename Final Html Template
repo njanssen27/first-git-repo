@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Servo Control Interface</title>
+  <link rel="stylesheet" href="/static_2/style.css">
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #121212;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    .joystick {
+      width: 250px;
+      height: 250px;
+      background: #1e1e1e;
+      border: 2px solid #888;
+      border-radius: 50%;
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .knob {
+      width: 50px;
+      height: 50px;
+      background: #00bcd4;
+      border-radius: 50%;
+      position: absolute;
+      left: 100px;
+      top: 100px;
+      cursor: pointer;
+    }
+    .toggle-container {
+      margin: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    button, input[type=checkbox] {
+      padding: 10px;
+      margin: 5px;
+      font-size: 1em;
+      background: #333;
+      color: white;
+      border: 1px solid #777;
+      border-radius: 8px;
+    }
+    .status {
+      margin-top: 20px;
+      font-size: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Raspberry Pi Servo Controller</h1>
+  <div class="joystick" id="joystick">
+    <div class="knob" id="knob"></div>
+  </div>
+
+  <div class="toggle-container">
+    <button onclick="resetServos()">Reset Servos</button>
+    <label><input type="checkbox" onchange="toggleAutonomous(this)"> Autonomous Mode</label>
+    <label><input type="checkbox" onchange="toggleDance(this)"> Dance Mode</label>
+  </div>
+
+  <div class="status">
+    <p>Light Level: <span id="lightLevel">--</span> lux</p>
+    <p>Motion Detected: <span id="motionStatus">--</span></p>
+  </div>
+
+  <script>
+    const knob = document.getElementById('knob');
+    const joystick = document.getElementById('joystick');
+    let dragging = false;
+
+    joystick.addEventListener('mousedown', startDrag);
+    joystick.addEventListener('touchstart', startDrag);
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('touchend', endDrag);
+    window.addEventListener('mousemove', drag);
+    window.addEventListener('touchmove', drag);
+
+    function startDrag(e) {
+      dragging = true;
+    }
+    function endDrag() {
+      dragging = false;
+      updatePosition(0, 0);
+    }
+    function drag(e) {
+      if (!dragging) return;
+      const rect = joystick.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left - rect.width / 2;
+      const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top - rect.height / 2;
+      const max = 100;
+      const boundedX = Math.max(-max, Math.min(max, x));
+      const boundedY = Math.max(-max, Math.min(max, y));
+      updatePosition(boundedX, boundedY);
+    }
+    function updatePosition(x, y) {
+      knob.style.left = `${x + 100}px`;
+      knob.style.top = `${y + 100}px`;
+
+      const angleX = Math.round(((x + 100) / 200) * 135);
+      const angleY = Math.round(((100 - y) / 200) * 135);
+
+      fetch('/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: angleX, y: angleY })
+      });
+    }
+
+    function resetServos() {
+      fetch('/reset', { method: 'POST' });
+    }
+    function toggleAutonomous(checkbox) {
+      fetch('/autonomous', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: checkbox.checked })
+      });
+    }
+    function toggleDance(checkbox) {
+      fetch('/dance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: checkbox.checked })
+      });
+    }
+
+    function updateStatus() {
+      fetch('/status')
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('lightLevel').textContent = data.light_level;
+          document.getElementById('motionStatus').textContent = data.motion_detected ? 'Yes' : 'No';
+        });
+    }
+    setInterval(updateStatus, 1000);
+  </script>
+</body>
+</html>
